@@ -1,4 +1,4 @@
-const SkillTest = require("../models/SkillTest");
+const SkillTest = require("../models/skillTest");
 const s3Client = require("../utils/s3Client");
 const { DeleteObjectCommand } = require("@aws-sdk/client-s3");
 
