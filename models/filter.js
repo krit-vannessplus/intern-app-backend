@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const { DOT_NEXT_ALIAS } = require("next/dist/lib/constants");
 const { Schema } = mongoose;
 
 const FilterSchema = new Schema({
