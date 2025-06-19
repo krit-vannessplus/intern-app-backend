@@ -27,6 +27,7 @@ const registerUser = async (req, res) => {
 
 // Login
 const loginUser = async (req, res) => {
+  console.log("Login attempt with body:", req.body);
   const { email, password } = req.body;
   try {
     const user = await User.findOne({ email });
@@ -42,7 +43,7 @@ const loginUser = async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
-
+    console.log("User logged in:", user.email);
     res.status(200).json({ token, role: user.role });
   } catch (error) {
     res.status(500).json({ error: "Server error" });
