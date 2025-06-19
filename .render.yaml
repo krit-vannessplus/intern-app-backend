@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: express-s3-app
+    env: node
+    plan: free
+    buildCommand: "pnpm install"
+    startCommand: "pnpm start"
