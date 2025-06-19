@@ -3,7 +3,6 @@ const express = require("express");
 const mongoose = require("mongoose");
 const path = require("path");
 const cors = require("cors");
-const bodyParser = require("body-parser");
 
 const userRoutes = require("./routes/userRoute");
 const skillTestRoutes = require("./routes/skillTestRoute");
@@ -24,7 +23,7 @@ app.use(
   "/skillTestResources",
   express.static(path.join(__dirname, "skillTestResources"))
 );
-app.use(bodyParser.json());
+app.use(express.json());
 
 mongoose
   .connect(process.env.MONGO_URI, {
