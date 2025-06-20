@@ -92,6 +92,7 @@ exports.getByEmail = async (req, res) => {
 /* ------------------------------------------------------------------ */
 exports.submitPersonalInfo = async (req, res) => {
   try {
+    console.log("submitPersonalInfo body:", req.body);
     const { email } = req.params;
     const doc = await PersonalInfo.findOne({ email });
     if (!doc) return res.status(404).json({ message: "not found" });

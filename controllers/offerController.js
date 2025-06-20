@@ -156,6 +156,9 @@ exports.updateOffer = async (req, res) => {
 const GradeAnalysis_URL = process.env.GradeAnalysis_URL;
 
 exports.submitSkillTest = async (req, res) => {
+  console.log("req.body:", req.body);
+  console.log("req.files:", req.files);
+  console.log("req.params:", req.params);
   try {
     const { email, name } = req.params;
     const offer = await Offer.findOne({ email });
@@ -188,25 +191,47 @@ exports.submitSkillTest = async (req, res) => {
       (t) => t.status === "submitted"
     );
 
-    /* trigger grade analysis only once all tests have been submitted */
+    /* trigger grade analysis only once all tests have been submitted.
+       Launch the work in background without waiting for it. */
     if (allSubmitted) {
-      const personalInfo = await PersonalInfo.findOne({ email });
-      const filterExists = await Filter.exists({ email });
+      console.log(
+        "All skill tests submitted, starting background grade analysis..."
+      );
+      (async () => {
+        try {
+          const personalInfo = await PersonalInfo.findOne({ email });
+          const filterExists = await Filter.exists({ email });
 
-      if (!filterExists && personalInfo?.gradeReport) {
-        const stream = await getObjectStream(personalInfo.gradeReport);
+          if (!filterExists && personalInfo?.gradeReport) {
+            const stream = await getObjectStream(personalInfo.gradeReport);
+            const form = new FormData();
+            form.append("file", stream, {
+              filename: extractKey(personalInfo.gradeReport).split("/").pop(),
+            });
 
-        const form = new FormData();
-        form.append("file", stream, {
-          filename: extractKey(personalInfo.gradeReport).split("/").pop(),
-        });
-
-        const resp = await axios.post(`${GradeAnalysis_URL}/analyze`, form, {
-          headers: form.getHeaders(),
-        });
-        await processGradeAnalysisResponse(resp.data, email);
-      }
+            const resp = await axios.post(
+              `${GradeAnalysis_URL}/analyze`,
+              form,
+              {
+                headers: form.getHeaders(),
+              }
+            );
+            await processGradeAnalysisResponse(resp.data, email);
+          }
+        } catch (err) {
+          console.error("Error in background grade analysis:", err);
+        }
+        console.log("Background grade analysis completed.");
+        try {
+          // Update user status in the background
+          userController.updateUserStatus({ body: { status: "considering" } });
+          console.log("User status updated to 'considering'.");
+        } catch (error) {
+          console.error("Error updating user status:", error);
+        }
+      })();
     }
+
     await offer.save();
     return res.json({ message: "Submitted", offer, allSubmitted });
   } catch (err) {
