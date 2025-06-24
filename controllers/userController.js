@@ -133,6 +133,7 @@ const getByEmail = async (req, res) => {
 
 const registerAdmin = async (req, res) => {
   const { email, password } = req.body;
+  console.log("Registering admin with body:", req.body);
   try {
     const existingUser = await User.findOne({ email });
     if (existingUser)
@@ -153,6 +154,7 @@ const registerAdmin = async (req, res) => {
 
 const registerAdmins = async (req, res) => {
   const { users } = req.body; // Expecting an array of user objects
+  console.log("Registering multiple admins with body:", req.body);
   try {
     const existingUsers = await User.find({
       email: { $in: users.map((u) => u.email) },
@@ -176,6 +178,7 @@ const registerAdmins = async (req, res) => {
 };
 
 const getAllAdmins = async (req, res) => {
+  console.log("Fetching all admins");
   try {
     const admins = await User.find({ role: "admin" }, { password: 0 });
     res.status(200).json(admins);
@@ -186,6 +189,7 @@ const getAllAdmins = async (req, res) => {
 
 const deleteByEmail = async (req, res) => {
   const { email } = req.params;
+  console.log("Deleting user with email:", email);
   try {
     const user = await User.findOneAndDelete({ email });
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -196,6 +200,7 @@ const deleteByEmail = async (req, res) => {
 };
 
 const deleteAllAdmins = async (req, res) => {
+  console.log("Deleting all admins");
   try {
     await User.deleteMany({ role: "admin" });
     res.status(200).json({ message: "All admins deleted successfully" });
