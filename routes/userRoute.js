@@ -6,6 +6,11 @@ const {
   updateUserStatus,
   getAllUsers,
   getByEmail,
+  registerAdmin,
+  registerAdmins,
+  getAllAdmins,
+  deleteByEmail,
+  deleteAllAdmins,
 } = require("../controllers/userController");
 const authMiddleware = require("../middleware/authMiddleware");
 
@@ -17,6 +22,13 @@ router.get("/user", authMiddleware, getUser);
 router.patch("/status", updateUserStatus);
 router.get("/getAll", getAllUsers);
 router.get("/getByEmail/:email", getByEmail);
+
+//admin management routes
+router.post("/registerAdmin", registerAdmin);
+router.get("/getAllAdmins", getAllAdmins);
+router.delete("/deleteByEmail/:email", deleteByEmail);
+router.delete("/deleteAllAdmins", deleteAllAdmins);
+router.post("/registerAdmins", registerAdmins);
 
 /* ───── NEW: verify token ───── */
 router.get("/verify-token", authMiddleware, (req, res) => {

@@ -131,6 +131,79 @@ const getByEmail = async (req, res) => {
   }
 };
 
+const registerAdmin = async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const existingUser = await User.findOne({ email });
+    if (existingUser)
+      return res.status(400).json({ message: "Email already exists" });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = new User({
+      email,
+      password: hashedPassword,
+      role: "admin",
+    });
+    await newUser.save();
+    res.status(201).json({ message: "Admin registered successfully" });
+  } catch (error) {
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+const registerAdmins = async (req, res) => {
+  const { users } = req.body; // Expecting an array of user objects
+  try {
+    const existingUsers = await User.find({
+      email: { $in: users.map((u) => u.email) },
+    });
+    if (existingUsers.length > 0)
+      return res.status(400).json({ message: "Some emails already exist" });
+
+    const hashedUsers = await Promise.all(
+      users.map(async (user) => ({
+        ...user,
+        password: await bcrypt.hash(user.password, 10),
+        role: "admin",
+      }))
+    );
+
+    await User.insertMany(hashedUsers);
+    res.status(201).json({ message: "Admins registered successfully" });
+  } catch (error) {
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+const getAllAdmins = async (req, res) => {
+  try {
+    const admins = await User.find({ role: "admin" }, { password: 0 });
+    res.status(200).json(admins);
+  } catch (error) {
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+const deleteByEmail = async (req, res) => {
+  const { email } = req.params;
+  try {
+    const user = await User.findOneAndDelete({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.status(200).json({ message: "User deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+const deleteAllAdmins = async (req, res) => {
+  try {
+    await User.deleteMany({ role: "admin" });
+    res.status(200).json({ message: "All admins deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
@@ -138,4 +211,9 @@ module.exports = {
   updateUserStatus,
   getAllUsers,
   getByEmail,
+  registerAdmin,
+  registerAdmins,
+  getAllAdmins,
+  deleteByEmail,
+  deleteAllAdmins,
 };
