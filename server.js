@@ -37,4 +37,6 @@ app.use("/api/personalInfos", personalInfoRoutes);
 app.use("/api/filters", filterRoutes);
 app.use("/api/results", resultRoutes);
 
-app.listen(port, () => console.log(`Server running on port ${port}`));
+app.listen(port, "0.0.0.0", () => {
+  console.log(`Server running on port ${port}`);
+});
