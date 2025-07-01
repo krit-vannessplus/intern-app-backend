@@ -335,7 +335,8 @@ function calculateCompleteness(personalInfoObj) {
  * @param {string} email - The email to lookup the PersonalInfo.
  * @returns {Promise<Object>} - Returns the newly created Filter document.
  */
-async function processGradeAnalysisResponse(apiResponse, email) {
+
+exports.processGradeAnalysisResponse = async (apiResponse, email) => {
   try {
     // Example API response structure:
     // {
@@ -377,6 +378,4 @@ async function processGradeAnalysisResponse(apiResponse, email) {
     console.error("Error processing grade analysis response:", error);
     throw error;
   }
-}
-
-module.exports = { processGradeAnalysisResponse, calculateCompleteness };
+};

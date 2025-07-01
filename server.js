@@ -12,7 +12,7 @@ const personalInfoRoutes = require("./routes/personalInfoRoute");
 const positionRoutes = require("./routes/positionRoute");
 const filterRoutes = require("./routes/filterRoute");
 const resultRoutes = require("./routes/resultRoute");
-const { processCompletedOffers } = require("./services/offerService");
+const { processCompletedOffers } = require("./utils/genFilter");
 
 const port = process.env.PORT || 5000;
 
