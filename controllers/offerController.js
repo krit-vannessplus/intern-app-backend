@@ -11,51 +11,12 @@ const Offer = require("../models/offer");
 const Filter = require("../models/filter");
 const PersonalInfo = require("../models/personalInfo");
 const User = require("../models/user");
-
 const {
-  S3Client,
-  DeleteObjectCommand,
-  GetObjectCommand,
-} = require("@aws-sdk/client-s3");
-
-/* ──────────────────────────  S3 helpers  ────────────────────────── */
-
-const REGION = process.env.AWS_REGION;
-const BUCKET = process.env.AWS_S3_BUCKET_NAME;
-const s3 = new S3Client({ region: REGION });
-const S3_BASE = `https://${BUCKET}.s3.${REGION}.amazonaws.com`;
-
-/* url ⇄ key conversions -------------------------------------------- */
-function extractKey(pathOrUrl = "") {
-  if (!pathOrUrl.startsWith("http")) return pathOrUrl.replace(/^\/+/, "");
-  try {
-    const { pathname } = new URL(pathOrUrl);
-    return decodeURIComponent(pathname).replace(/^\/+/, "");
-  } catch {
-    // malformed URL? treat as raw key
-    return pathOrUrl.replace(/^\/+/, "");
-  }
-}
-const urlForKey = (key) => `${S3_BASE}/${encodeURIComponent(key)}`;
-
-/* deletion ---------------------------------------------------------- */
-async function deleteFromS3(pathOrUrl) {
-  const Key = extractKey(pathOrUrl);
-  try {
-    await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key }));
-    console.log("[s3] deleted", Key);
-  } catch (err) {
-    if (err?.name !== "NoSuchKey")
-      console.error("[s3] delete failed", Key, err);
-  }
-}
-
-/* download stream --------------------------------------------------- */
-async function getObjectStream(pathOrUrl) {
-  const Key = extractKey(pathOrUrl);
-  const { Body } = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key }));
-  return Body;
-}
+  extractKey,
+  urlForKey,
+  deleteFromS3,
+  getObjectStream,
+} = require("../utils/s3Client");
 
 /* ──────────────────────────  CREATE  ─────────────────────────────── */
 
@@ -148,105 +109,6 @@ exports.updateOffer = async (req, res) => {
     return res.json({ message: "Offer updated", offer });
   } catch (err) {
     console.error("updateOffer", err);
-    return res.status(400).json({ error: err.message });
-  }
-};
-
-/* ───────────────────────  SUBMIT SKILL TEST  ─────────────────────── */
-
-const GradeAnalysis_URL = process.env.GradeAnalysis_URL;
-
-exports.submitSkillTest = async (req, res) => {
-  console.log("req.body:", req.body);
-  console.log("req.files:", req.files);
-  console.log("req.params:", req.params);
-  try {
-    const { email, name } = req.params;
-    const offer = await Offer.findOne({ email });
-    if (!offer) return res.status(404).json({ message: "Offer not found" });
-
-    const st = offer.skillTests.find((t) => t.name === name);
-    if (!st) return res.status(404).json({ message: "Skill test not found" });
-
-    /* keepFiles pruning */
-    let keepFiles = req.body.keepFiles || [];
-    if (typeof keepFiles === "string") keepFiles = JSON.parse(keepFiles);
-
-    if (Array.isArray(keepFiles)) {
-      const toRemove = st.uploadedFiles.filter((u) => !keepFiles.includes(u));
-      await Promise.all(toRemove.map(deleteFromS3));
-      st.uploadedFiles = keepFiles.slice();
-    }
-
-    /* new uploads */
-    const newUrls = (req.files || []).map(
-      (f) => f.location || urlForKey(f.key)
-    );
-    if (st.uploadedFiles.length + newUrls.length > 10)
-      return res.status(400).json({ message: "max 10 files per test" });
-
-    st.uploadedFiles.push(...newUrls);
-    st.status = "submitted";
-
-    const allSubmitted = offer.skillTests.every(
-      (t) => t.status === "submitted"
-    );
-
-    /* trigger grade analysis only once all tests have been submitted.
-       Launch the work in background without waiting for it. */
-    if (allSubmitted) {
-      console.log(
-        "All skill tests submitted, starting background grade analysis..."
-      );
-      // update user status
-      try {
-        const user = await User.findOne(
-          { email: req.body.email },
-          { password: 0 }
-        );
-        user.status = "considering";
-        await user.save();
-        console.log("User status updated to 'considering'.");
-      } catch (error) {
-        console.error("Error updating user status:", error);
-      }
-      // call grade report analysis
-      (async () => {
-        try {
-          const personalInfo = await PersonalInfo.findOne({ email });
-          const filterExists = await Filter.exists({ email });
-
-          if (!filterExists && personalInfo?.gradeReport) {
-            const stream = await getObjectStream(personalInfo.gradeReport);
-            const form = new FormData();
-            form.append("file", stream, {
-              filename: extractKey(personalInfo.gradeReport).split("/").pop(),
-            });
-
-            const resp = await axios.post(
-              `${GradeAnalysis_URL}/analyze`,
-              form,
-              {
-                headers: form.getHeaders(),
-              }
-            );
-            const filter = await processGradeAnalysisResponse(resp.data, email);
-            console.log("Filter created:", filter);
-          } else {
-            console.log("Filter already exists or no grade report found.");
-          }
-        } catch (err) {
-          console.error("Error in background grade analysis:", err);
-        }
-      })();
-    }
-
-    await offer.save();
-    console.log("saving offer: ", offer);
-    console.log("all submitted? ", allSubmitted);
-    return res.status(200).json({ message: "Submitted", offer, allSubmitted });
-  } catch (err) {
-    console.error("submitSkillTest", err);
     return res.status(400).json({ error: err.message });
   }
 };
@@ -377,5 +239,105 @@ exports.processGradeAnalysisResponse = async (apiResponse, email) => {
   } catch (error) {
     console.error("Error processing grade analysis response:", error);
     throw error;
+  }
+};
+
+/* ───────────────────────  SUBMIT SKILL TEST  ─────────────────────── */
+
+const GradeAnalysis_URL = process.env.GradeAnalysis_URL;
+
+exports.submitSkillTest = async (req, res) => {
+  console.log("req.body:", req.body);
+  console.log("req.files:", req.files);
+  console.log("req.params:", req.params);
+  try {
+    const { email, name } = req.params;
+    const offer = await Offer.findOne({ email });
+    if (!offer) return res.status(404).json({ message: "Offer not found" });
+
+    const st = offer.skillTests.find((t) => t.name === name);
+    if (!st) return res.status(404).json({ message: "Skill test not found" });
+
+    /* keepFiles pruning */
+    let keepFiles = req.body.keepFiles || [];
+    if (typeof keepFiles === "string") keepFiles = JSON.parse(keepFiles);
+
+    if (Array.isArray(keepFiles)) {
+      const toRemove = st.uploadedFiles.filter((u) => !keepFiles.includes(u));
+      await Promise.all(toRemove.map(deleteFromS3));
+      st.uploadedFiles = keepFiles.slice();
+    }
+
+    /* new uploads */
+    const newUrls = (req.files || []).map(
+      (f) => f.location || urlForKey(f.key)
+    );
+    if (st.uploadedFiles.length + newUrls.length > 10)
+      return res.status(400).json({ message: "max 10 files per test" });
+
+    st.uploadedFiles.push(...newUrls);
+    st.status = "submitted";
+
+    const allSubmitted = offer.skillTests.every(
+      (t) => t.status === "submitted"
+    );
+
+    /* trigger grade analysis only once all tests have been submitted.
+       Launch the work in background without waiting for it. */
+    if (allSubmitted) {
+      console.log(
+        "All skill tests submitted, starting background grade analysis..."
+      );
+      // update user status
+      try {
+        const user = await User.findOne({ email }, { password: 0 });
+        if (!user) {
+          console.error("User Not found");
+        }
+        user.status = "considering";
+        await user.save();
+        console.log("User status updated to 'considering'.");
+      } catch (error) {
+        console.error("Error updating user status:", error);
+      }
+      // call grade report analysis
+      (async () => {
+        try {
+          const personalInfo = await PersonalInfo.findOne({ email });
+          const filterExists = await Filter.exists({ email });
+
+          if (!filterExists && personalInfo?.gradeReport) {
+            const stream = await getObjectStream(personalInfo.gradeReport);
+            const form = new FormData();
+            form.append("file", stream, {
+              filename: extractKey(personalInfo.gradeReport).split("/").pop(),
+            });
+            console.log("start calling grade analyze api");
+
+            const resp = await axios.post(
+              `${GradeAnalysis_URL}/analyze`,
+              form,
+              {
+                headers: form.getHeaders(),
+              }
+            );
+            const filter = await processGradeAnalysisResponse(resp.data, email);
+            console.log("Filter created:", filter);
+          } else {
+            console.log("Filter already exists or no grade report found.");
+          }
+        } catch (err) {
+          console.error("Error in background grade analysis:", err);
+        }
+      })();
+    }
+
+    await offer.save();
+    console.log("saving offer: ", offer);
+    console.log("all submitted? ", allSubmitted);
+    return res.status(200).json({ message: "Submitted", offer, allSubmitted });
+  } catch (err) {
+    console.error("submitSkillTest", err);
+    return res.status(400).json({ error: err.message });
   }
 };
