@@ -379,4 +379,4 @@ async function processGradeAnalysisResponse(apiResponse, email) {
   }
 }
 
-module.exports(processGradeAnalysisResponse, calculateCompleteness);
+module.exports = { processGradeAnalysisResponse, calculateCompleteness };
