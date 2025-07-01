@@ -10,6 +10,7 @@ const FormData = require("form-data");
 const Offer = require("../models/offer");
 const Filter = require("../models/filter");
 const PersonalInfo = require("../models/personalInfo");
+const User = require("../models/user");
 
 const {
   S3Client,
@@ -197,6 +198,19 @@ exports.submitSkillTest = async (req, res) => {
       console.log(
         "All skill tests submitted, starting background grade analysis..."
       );
+      // update user status
+      try {
+        const user = await User.findOne(
+          { email: req.body.email },
+          { password: 0 }
+        );
+        user.status = "considering";
+        await user.save();
+        console.log("User status updated to 'considering'.");
+      } catch (error) {
+        console.error("Error updating user status:", error);
+      }
+      // call grade report analysis
       (async () => {
         try {
           const personalInfo = await PersonalInfo.findOne({ email });
@@ -218,27 +232,32 @@ exports.submitSkillTest = async (req, res) => {
             );
             const filter = await processGradeAnalysisResponse(resp.data, email);
             console.log("Filter created:", filter);
-            // Update user status in the background
-            try {
-              userController.updateUserStatus({
-                body: { status: "considering" },
-              });
-              console.log("User status updated to 'considering'.");
-            } catch (error) {
-              console.error("Error updating user status:", error);
-            }
           } else {
             console.log("Filter already exists or no grade report found.");
           }
         } catch (err) {
           console.error("Error in background grade analysis:", err);
+          try {
+            const user = await User.findOne(
+              { email: req.body.email },
+              { password: 0 }
+            );
+            user.status = "offering";
+            await user.save();
+            console.log(
+              "User status updated back to 'offering' due to grade analysis error."
+            );
+          } catch (error) {
+            console.error("Error updating user status:", error);
+          }
         }
-        console.log("Background grade analysis completed.");
       })();
     }
 
     await offer.save();
-    return res.json({ message: "Submitted", offer, allSubmitted });
+    console.log("saving offer: ", offer);
+    console.log("all submitted? ", allSubmitted);
+    return res.status(200).json({ message: "Submitted", offer, allSubmitted });
   } catch (err) {
     console.error("submitSkillTest", err);
     return res.status(400).json({ error: err.message });
@@ -372,3 +391,5 @@ async function processGradeAnalysisResponse(apiResponse, email) {
     throw error;
   }
 }
+
+module.exports(processGradeAnalysisResponse, calculateCompleteness);

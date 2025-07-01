@@ -12,6 +12,7 @@ const personalInfoRoutes = require("./routes/personalInfoRoute");
 const positionRoutes = require("./routes/positionRoute");
 const filterRoutes = require("./routes/filterRoute");
 const resultRoutes = require("./routes/resultRoute");
+const { processCompletedOffers } = require("./services/offerService");
 
 const port = process.env.PORT || 5000;
 
@@ -25,7 +26,11 @@ mongoose
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
-  .then(() => console.log("MongoDB connected"))
+  .then(() => {
+    console.log("MongoDB connected");
+    processCompletedOffers(); // run immediately on startup
+    setInterval(processCompletedOffers, 300 * 1000); // then every 300s
+  })
   .catch((err) => console.error("MongoDB connection error:", err));
 
 app.use("/api/users", userRoutes);
