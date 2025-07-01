@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const requestController = require("../controllers/requestController");
+const authMiddleware = require("../middleware/authMiddleware");
 
 const makeUploader = require("../utils/s3Uploader");
 const upload = makeUploader(() => "resumes");
@@ -8,6 +9,7 @@ const upload = makeUploader(() => "resumes");
 // Route to create a new request (resume upload, positions, and email)
 router.post(
   "/create",
+  authMiddleware,
   upload.single("resume"),
   requestController.createRequest
 );
@@ -15,6 +17,7 @@ router.post(
 // Route to update an existing request by email
 router.put(
   "/update/:email",
+  authMiddleware,
   upload.single("resume"),
   requestController.updateRequestByEmail
 );

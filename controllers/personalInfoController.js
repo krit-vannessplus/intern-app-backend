@@ -77,8 +77,10 @@ exports.createPersonalInfo = async (req, res) => {
 /*                      GET  /getByEmail/:email                       */
 /* ------------------------------------------------------------------ */
 exports.getByEmail = async (req, res) => {
+  console.log("get personalInfo of email:", req.params.email);
   try {
     const doc = await PersonalInfo.findOne({ email: req.params.email });
+    console.log("personalInfo found:", doc);
     if (!doc) return res.status(404).json({ message: "not found" });
 
     res.json({ personalInfo: doc });

@@ -1,6 +1,121 @@
-const User = require("../models/user");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+
+// Load environment variables and required modules
+require("dotenv").config();
+const {
+  S3Client,
+  DeleteObjectCommand,
+  ListObjectsV2Command,
+  DeleteObjectsCommand,
+} = require("@aws-sdk/client-s3");
+
+// Import your models
+const User = require("../models/user");
+const Request = require("../models/request");
+const PersonalInfo = require("../models/personalInfo");
+const Offer = require("../models/offer");
+const Filter = require("../models/filter");
+const Result = require("../models/result");
+
+// Initialize the S3 client and bucket name from environment variables
+const s3 = new S3Client({ region: process.env.AWS_REGION });
+const BUCKET = process.env.AWS_S3_BUCKET_NAME;
+
+/* --------------------------- Helper Functions --------------------------- */
+
+// Convert a full URL to an S3 object key
+function keyFromUrl(urlStr = "") {
+  try {
+    const url = new URL(urlStr);
+    // Remove the leading '/' and decode the string in case it contains spaces or encoded characters
+    return decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+  } catch {
+    return "";
+  }
+}
+
+// Delete a single S3 object given its URL
+async function deleteFromS3ByUrl(url) {
+  const key = keyFromUrl(url);
+  if (!key) return;
+  try {
+    await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
+    console.log("[s3] deleted", key);
+  } catch (err) {
+    if (err?.name !== "NoSuchKey") console.error("[s3] delete failed:", err);
+  }
+}
+
+// Delete all objects in S3 that have keys starting with the given prefix (simulate folder deletion)
+async function deleteFolderFromS3(prefix) {
+  try {
+    let continuationToken = undefined;
+    do {
+      const listParams = {
+        Bucket: BUCKET,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      };
+      const listResponse = await s3.send(new ListObjectsV2Command(listParams));
+      if (listResponse.Contents && listResponse.Contents.length > 0) {
+        const deleteParams = {
+          Bucket: BUCKET,
+          Delete: {
+            Objects: listResponse.Contents.map((item) => ({ Key: item.Key })),
+          },
+        };
+        await s3.send(new DeleteObjectsCommand(deleteParams));
+        console.log(`[s3] deleted objects with prefix ${prefix}`);
+      }
+      continuationToken = listResponse.IsTruncated
+        ? listResponse.NextContinuationToken
+        : null;
+    } while (continuationToken);
+  } catch (err) {
+    console.error(`[s3] failed to delete folder with prefix ${prefix}:`, err);
+  }
+}
+
+/* --------------------------- Controller Function --------------------------- */
+
+const deleteByEmail = async (req, res) => {
+  const { email } = req.params;
+  console.log("Deleting user with email:", email);
+  try {
+    // Delete the user from the Users collection
+    const user = await User.findOneAndDelete({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // If the user is not an admin, delete their associated records and S3 files/folders
+    if (user.role !== "admin") {
+      // Delete a request record and its associated resume file (if present)
+      const requestRecord = await Request.findOneAndDelete({ email });
+      if (requestRecord && requestRecord.resume) {
+        await deleteFromS3ByUrl(requestRecord.resume);
+      }
+
+      // Delete the personalInfo record and remove the folder from S3 (assuming folder prefix "personalInfo/<email>/")
+      await PersonalInfo.findOneAndDelete({ email });
+      await deleteFolderFromS3(`personalInfo/${email}/`);
+
+      // Delete the offer record and its S3 folder (assuming folder prefix "offers/<email>/")
+      await Offer.findOneAndDelete({ email });
+      await deleteFolderFromS3(`offers/${email}/`);
+
+      // Delete additional records (if needed)
+      await Filter.findOneAndDelete({ email });
+      await Result.findOneAndDelete({ email });
+    }
+
+    res.status(200).json({ message: "User deleted successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+module.exports = { deleteByEmail };
 
 // Register (Only for candidates)
 const registerUser = async (req, res) => {
@@ -39,7 +154,7 @@ const loginUser = async (req, res) => {
       return res.status(400).json({ message: "Invalid email or password" });
 
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { email: user.email, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
@@ -68,11 +183,11 @@ const getUser = async (req, res) => {
     }
 
     // Fetch user from DB
-    const user = await User.findById(decoded.id, { password: 0 });
+    console.log("Fetching user with email:", decoded.email);
+    const user = await User.findOne({ email: decoded.email }, { password: 0 });
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-
     // Send user data
     res.status(200).json(user);
   } catch (error) {
@@ -182,18 +297,6 @@ const getAllAdmins = async (req, res) => {
   try {
     const admins = await User.find({ role: "admin" }, { password: 0 });
     res.status(200).json(admins);
-  } catch (error) {
-    res.status(500).json({ error: "Server error" });
-  }
-};
-
-const deleteByEmail = async (req, res) => {
-  const { email } = req.params;
-  console.log("Deleting user with email:", email);
-  try {
-    const user = await User.findOneAndDelete({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
-    res.status(200).json({ message: "User deleted successfully" });
   } catch (error) {
     res.status(500).json({ error: "Server error" });
   }

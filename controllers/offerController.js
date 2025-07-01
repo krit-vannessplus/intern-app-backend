@@ -216,19 +216,24 @@ exports.submitSkillTest = async (req, res) => {
                 headers: form.getHeaders(),
               }
             );
-            await processGradeAnalysisResponse(resp.data, email);
+            const filter = await processGradeAnalysisResponse(resp.data, email);
+            console.log("Filter created:", filter);
+            // Update user status in the background
+            try {
+              userController.updateUserStatus({
+                body: { status: "considering" },
+              });
+              console.log("User status updated to 'considering'.");
+            } catch (error) {
+              console.error("Error updating user status:", error);
+            }
+          } else {
+            console.log("Filter already exists or no grade report found.");
           }
         } catch (err) {
           console.error("Error in background grade analysis:", err);
         }
         console.log("Background grade analysis completed.");
-        try {
-          // Update user status in the background
-          userController.updateUserStatus({ body: { status: "considering" } });
-          console.log("User status updated to 'considering'.");
-        } catch (error) {
-          console.error("Error updating user status:", error);
-        }
       })();
     }
 
@@ -361,8 +366,6 @@ async function processGradeAnalysisResponse(apiResponse, email) {
     // Create and save a new Filter instance
     const filter = new Filter(filterData);
     await filter.save();
-
-    console.log("Filter created:", filter);
     return filter;
   } catch (error) {
     console.error("Error processing grade analysis response:", error);

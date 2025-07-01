@@ -4,6 +4,7 @@ const router = express.Router();
 
 const personalInfoController = require("../controllers/personalInfoController");
 const makeUploader = require("../utils/s3Uploader");
+const authMiddleware = require("../middleware/authMiddleware");
 
 /* ——— keep the list in ONE place so routes & controller match ——— */
 const UPLOAD_FIELDS = [
@@ -32,6 +33,7 @@ router.get("/getByEmail/:email", personalInfoController.getByEmail);
 router.patch(
   "/submit/:email",
   upload.fields(UPLOAD_FIELDS.map((name) => ({ name, maxCount: 1 }))),
+  authMiddleware,
   personalInfoController.submitPersonalInfo
 );
 
