@@ -237,19 +237,6 @@ exports.submitSkillTest = async (req, res) => {
           }
         } catch (err) {
           console.error("Error in background grade analysis:", err);
-          try {
-            const user = await User.findOne(
-              { email: req.body.email },
-              { password: 0 }
-            );
-            user.status = "offering";
-            await user.save();
-            console.log(
-              "User status updated back to 'offering' due to grade analysis error."
-            );
-          } catch (error) {
-            console.error("Error updating user status:", error);
-          }
         }
       })();
     }
